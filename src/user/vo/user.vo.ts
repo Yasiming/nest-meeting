@@ -71,6 +71,10 @@ export class UserDetailVo {
 
   @ApiProperty()
   createTime: Date;
+
+  roles: string[];
+
+  permissions: any[];
 }
 
 export class RefreshTokenVo {

@@ -20,6 +20,7 @@ import { MeetingRoom } from './meeting-room/entities/meeting-room.entity';
 import { BookingModule } from './booking/booking.module';
 import { Booking } from './booking/entities/booking.entity';
 import { StatisticModule } from './statistic/statistic.module';
+import { MenuModule } from './menu/menu.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { StatisticModule } from './statistic/statistic.module';
     MeetingRoomModule,
     BookingModule,
     StatisticModule,
+    MenuModule,
   ],
   controllers: [AppController],
   providers: [

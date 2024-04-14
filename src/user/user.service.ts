@@ -2,7 +2,14 @@ import { HttpException, HttpStatus, Injectable, Logger, UnauthorizedException } 
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from './entities/user.entities';
 import { Like, Repository } from 'typeorm';
-import { LoginUserDto, RegisterUserDto, UpdateUserDto, UpdateUserPasswordDto } from './dto/user.dto';
+import {
+  AdminUpdateUserDto,
+  CreateUserDto,
+  LoginUserDto,
+  RegisterUserDto,
+  UpdateUserDto,
+  UpdateUserPasswordDto,
+} from './dto/user.dto';
 import { RedisService } from '../redis/redis.service';
 import { md5 } from '../utils';
 import { LoginUserVo, UserDetailVo } from './vo/user.vo';
@@ -47,6 +54,33 @@ export class UserService {
 
     try {
       await this.userRepository.save(newUser);
+      return '注册成功';
+    } catch (e) {
+      this.logger.error(e, UserService);
+      return '注册失败';
+    }
+  }
+
+  async create(createUserDto: CreateUserDto) {
+    const user = new User();
+
+    user.email = createUserDto.email;
+    user.headPic = createUserDto.headPic;
+    user.nickName = createUserDto.nickName;
+    user.password = createUserDto.password;
+    user.username = createUserDto.username;
+    user.phoneNumber = createUserDto.phoneNumber;
+
+    const foundUser = await this.userRepository.findOneBy({
+      username: user.username,
+    });
+
+    if (foundUser) {
+      throw new HttpException('用户已存在', HttpStatus.BAD_REQUEST);
+    }
+
+    try {
+      await this.userRepository.save(user);
       return '注册成功';
     } catch (e) {
       this.logger.error(e, UserService);
@@ -198,6 +232,11 @@ export class UserService {
       where: {
         id: userId,
       },
+      relations: {
+        roles: {
+          permissions: true,
+        },
+      },
     });
 
     const vo = new UserDetailVo();
@@ -209,6 +248,15 @@ export class UserService {
     vo.nickName = user.nickName;
     vo.createTime = user.createTime;
     vo.isFrozen = user.isFrozen;
+    vo.roles = user.roles.map((item) => item.name);
+    vo.permissions = user.roles.reduce((arr, item) => {
+      item.permissions.forEach((permission) => {
+        if (arr.indexOf(permission) === -1) {
+          arr.push(permission);
+        }
+      });
+      return arr;
+    }, []);
 
     return vo;
   }
@@ -279,8 +327,33 @@ export class UserService {
     }
   }
 
+  // 管理员更新用户信息
+  async adminUpdateUserInfo(userId: number, updateUserDto: AdminUpdateUserDto) {
+    const foundUser = await this.userRepository.findOneBy({
+      id: userId,
+    });
+
+    foundUser.nickName = updateUserDto.nickName;
+    foundUser.email = updateUserDto.email;
+
+    if (updateUserDto.phoneNumber) {
+      foundUser.phoneNumber = updateUserDto.phoneNumber;
+    }
+    if (updateUserDto.headPic) {
+      foundUser.headPic = updateUserDto.headPic;
+    }
+
+    try {
+      await this.userRepository.save(foundUser);
+      return '用户信息修改成功';
+    } catch (e) {
+      this.logger.error(e, UserService);
+      return '用户信息修改成功';
+    }
+  }
+
   // 通过Id冻结用户
-  async freezeUserById(id: number) {
+  async freezeUserById(id: number, isFrozen: boolean) {
     const user = await this.userRepository.findOneBy({
       id,
     });
@@ -289,15 +362,23 @@ export class UserService {
       throw new HttpException('用户不存在', HttpStatus.BAD_REQUEST);
     }
 
-    user.isFrozen = true;
+    user.isFrozen = isFrozen;
 
     await this.userRepository.save(user);
   }
 
   // 分页列表
-  async findUsersByPage(pageNo: number, pageSize: number, username: string, nickName: string, email: string) {
+  async findUsersByPage(
+    pageNo: number,
+    pageSize: number,
+    username: string,
+    nickName: string,
+    email: string,
+    isFrozen: boolean,
+  ) {
     const skipCount = (pageNo - 1) * pageSize;
     const condition = {} as Record<Partial<keyof User>, any>;
+    condition.isFrozen = isFrozen;
 
     if (username) {
       condition.username = Like(`%${username}%`);
@@ -314,6 +395,9 @@ export class UserService {
       skip: skipCount,
       take: pageSize,
       where: condition,
+      order: {
+        id: 'DESC',
+      },
     });
 
     return {
